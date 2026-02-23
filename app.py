@@ -114,20 +114,32 @@ if aja_haku:
                                     if uid:
                                         uid_nro = "".join(filter(str.isdigit, uid.group(1)))
                                         t_path = "game" if "game" in uid.group(1).lower() else "training"
-                                        page.goto(f"https://assat-app.jopox.fi/{t_path}/club/{j['club_id']}/{uid_nro}")
+                                        page.goto(f"https://assat-app.jopox.fi/{t_path}/club/{j['club_id']}/{uid_nro}", wait_until="networkidle")
                                         
                                         try:
-                                            # Odotetaan laatikkoa ja lasketaan pelaajat
-                                            page.wait_for_selector("#yesBox", timeout=12000)
-                                            maara = page.locator("#yesBox .chip").count()
+                                            # Odotetaan että sivu latautuu kunnolla
+                                            page.wait_for_selector("#yesBox", timeout=15000)
                                             
+                                            # Lasketaan kaikki mahdolliset pelaajaelementit laatikon sisältä
+                                            # Tämä laskee .chip, .player-card ja muut yleiset elementit
+                                            pelaajat = page.locator("#yesBox .chip, #yesBox .player, #yesBox [class*='player']").count()
+                                            
+                                            # Jos laskuri näyttää nollaa, kokeillaan vielä yleisempää hakua
+                                            if pelaajat == 0:
+                                                pelaajat = page.locator("#yesBox > div > div").count()
+
                                             tulokset.append({
-                                                "Pvm": nayta_pvm, "Klo": klo, "Tyyppi": "PELI" if t_path == "game" else "HKT",
-                                                "Joukkue": j['nimi'], "Paikka": paikka, "Hlö": maara,
-                                                "Tarve": "2 KOPPIA" if maara > 16 else "1 KOPPI"
+                                                "Pvm": nayta_pvm, 
+                                                "Klo": klo, 
+                                                "Tyyppi": "PELI" if t_path == "game" else "HKT",
+                                                "Joukkue": j['nimi'], 
+                                                "Paikka": paikka, 
+                                                "Hlö": pelaajat,
+                                                "Tarve": "2 KOPPIA" if pelaajat > 16 else "1 KOPPI"
                                             })
                                         except:
-                                            st.warning(f"Ei saatu tietoja: {nayta_pvm} {klo}")
+                                            # Jos sivu ei lataudu, kokeillaan kerran uudestaan
+                                            st.warning(f"Ei saatu tietoja: {nayta_pvm} {klo} (Timeout)")
 
                         # TÄRKEÄÄ: curr on tässä sisennyksessä, for-joukkueiden ulkopuolella
                         curr += timedelta(days=1)
