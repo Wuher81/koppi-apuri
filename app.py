@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import re
@@ -57,6 +58,10 @@ if aja_haku:
         tulokset = []
         with st.status("Haetaan tietoja...", expanded=True) as status:
             try:
+                # --- TÄHÄN VÄLIIN ---
+                st.write("Asennetaan tarvittavat selainkomponentit (tämä kestää hetken)...")
+                os.system("playwright install firefox")
+                # ------------------
                 with sync_playwright() as p:
                     # Selain pilvipalvelua varten
                     browser = p.firefox.launch(headless=True)
