@@ -14,12 +14,8 @@ st.markdown("""
     <style>
     .stApp { background-color: #000000; color: white; }
     .stButton>button { 
-        width: 100%; 
-        border-radius: 5px; 
-        height: 3em; 
-        background-color: #CC0000 !important; 
-        color: white !important; 
-        font-weight: bold;
+        width: 100%; border-radius: 5px; height: 3em; 
+        background-color: #CC0000 !important; color: white !important; font-weight: bold;
     }
     label, p, span { color: white !important; }
     .stDateInput div, .stTextInput div { color: black !important; }
@@ -49,7 +45,6 @@ with st.form("haku_lomake"):
     halli_valinta = st.selectbox("Valitse Halli", ["0 (Kaikki)", "1 (Astora)", "2 (Isomäki)"])
     aja_haku = st.form_submit_button("KÄYNNISTÄ HAKU")
 
-# --- HAKULOGIIKKA ---
 if aja_haku:
     if not user or not pw:
         st.error("Syötä Jopox-tunnukset!")
@@ -57,8 +52,6 @@ if aja_haku:
         tulokset = []
         with st.status("Haetaan tietoja...", expanded=True) as status:
             try:
-                # 1. Selaimen asennus
-                st.write("Varmistetaan selainkomponentit...")
                 os.system("playwright install firefox")
                 
                 with sync_playwright() as p:
@@ -66,32 +59,34 @@ if aja_haku:
                     context = browser.new_context(viewport={'width': 1280, 'height': 800})
                     page = context.new_page()
 
-                    # 2. Kirjautuminen
+                    # 1. VARMA KIRJAUTUMINEN
                     st.write("Kirjaudutaan Jopoxiin...")
                     page.goto("https://login.jopox.fi/login?to=145")
-                    page.wait_for_selector("input", timeout=20000)
                     
-                    # Syötetään tunnukset näppäimistöllä (varmempi tapa)
-                    page.keyboard.press("Tab")
+                    # Odotetaan mitä tahansa tekstikenttää
+                    page.wait_for_selector("input", timeout=30000)
+                    
+                    # Syötetään tunnukset suoraan kohdistamalla ensimmäiseen kenttään
+                    page.focus("input")
                     page.keyboard.type(user)
                     page.keyboard.press("Tab")
                     page.keyboard.type(pw)
                     page.keyboard.press("Enter")
                     
-                    # Odotetaan kirjautumisen läpimenoa
-                    page.wait_for_timeout(5000)
+                    page.wait_for_timeout(5000) # Annetaan sivun rauhassa vaihtua
 
-                    # 3. Pakotettu selainversio (Tämä poistaa mobiilinäkymän ongelmat)
+                    # 2. PAKOTETTU SELAINVERSIO
                     try:
-                        selain_nappi = page.get_by_role("link", name=re.compile("selainversio|browser version", re.I))
-                        if selain_nappi.count() > 0:
+                        # Etsitään linkkiä, joka sisältää tekstin "selainversio"
+                        btn = page.locator("a:has-text('selainversio'), a:has-text('browser version')").first
+                        if btn.is_visible():
                             st.write("Siirrytään selainversioon...")
-                            selain_nappi.click()
+                            btn.click()
                             page.wait_for_timeout(3000)
                     except:
                         pass
 
-                    # 4. Päivien läpikäynti
+                    # 3. HAKU-SILMUKKA
                     curr = datetime.combine(alku_pvm, datetime.min.time())
                     loppu = datetime.combine(loppu_pvm, datetime.min.time())
 
@@ -107,7 +102,7 @@ if aja_haku:
                                 
                                 for seg in ical.split("BEGIN:VEVENT"):
                                     if etsi_pvm in seg and "END:VEVENT" in seg:
-                                        # Hallisuodatus
+                                        # Sijaintisuodatus
                                         loc = re.search(r"LOCATION:(.*)", seg)
                                         paikka = loc.group(1).strip().replace("\\,", ",") if loc else "Pori"
                                         h_id = halli_valinta[0]
@@ -119,46 +114,36 @@ if aja_haku:
                                         e_m = re.search(r"DTEND.*T(\d{2})(\d{2})", seg)
                                         klo = f"{a_m.group(1)}:{a_m.group(2)} - {e_m.group(1)}:{e_m.group(2)}" if a_m and e_m else "--:--"
 
-                                        # Tapahtuman UID
                                         uid = re.search(r"UID:(.*)", seg)
                                         if uid:
                                             uid_nro = "".join(filter(str.isdigit, uid.group(1)))
                                             t_path = "game" if "game" in uid.group(1).lower() else "training"
                                             
-                                            # Mennään tapahtuman sivulle
                                             page.goto(f"https://assat-app.jopox.fi/{t_path}/club/{j['club_id']}/{uid_nro}")
                                             
                                             try:
-                                                # Odotetaan ilmoittautuneiden listaa kärsivällisesti (30s)
-                                                page.wait_for_selector(".chip", timeout=30000)
+                                                # Odotetaan .chip-elementtejä (pelaajakortit)
+                                                page.wait_for_selector(".chip", timeout=20000)
                                                 maara = page.locator(".chip").count()
                                                 
                                                 tulokset.append({
-                                                    "Pvm": nayta_pvm, 
-                                                    "Klo": klo, 
-                                                    "Tyyppi": "PELI" if t_path == "game" else "HKT",
-                                                    "Joukkue": j['nimi'], 
-                                                    "Paikka": paikka, 
-                                                    "Hlö": maara,
+                                                    "Pvm": nayta_pvm, "Klo": klo, "Tyyppi": "PELI" if t_path == "game" else "HKT",
+                                                    "Joukkue": j['nimi'], "Paikka": paikka, "Hlö": maara,
                                                     "Tarve": "2 KOPPIA" if maara > 16 else "1 KOPPI"
                                                 })
                                             except:
                                                 st.warning(f"Ei ilmoittautuneita: {nayta_pvm} {klo}")
                             except:
                                 continue
-
-                        # Siirrytään seuraavaan päivään
                         curr += timedelta(days=1)
 
-                    # Suljetaan selain haku-loopin jälkeen
                     browser.close()
                 
                 status.update(label="Haku valmis!", state="complete", expanded=False)
 
-                # 5. Tulosten näyttäminen
                 if tulokset:
                     df = pd.DataFrame(tulokset)
-                    st.table(df) # Table toimii varmemmin mobiililla
+                    st.table(df)
                     st.divider()
                     csv = df.to_csv(index=False).encode('utf-8-sig')
                     st.download_button("📥 LATAA CSV", csv, f"kopit_{datetime.now().strftime('%d%m%Y')}.csv", "text/csv")
