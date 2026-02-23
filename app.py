@@ -135,15 +135,15 @@ if aja_haku:
                                             else:
                                                 maara = page.locator("#yesBox .chip").count()
                                         
-                                        tulokset.append({
-                                            "Pvm": nayta_pvm,
-                                            "Klo": klo,
-                                            "Tyyppi": "PELI" if t_path == "game" else "HKT",
-                                            "Joukkue": j['nimi'],
-                                            "Paikka": paikka,
-                                            "Hlö": maara,
-                                            "Tarve": "2 KOPPIA" if maara > 16 else "1 KOPPI"
-                                        })
+                                            tulokset.append({
+                                                "Pvm": nayta_pvm,
+                                                "Klo": klo,
+                                                "Tyyppi": "PELI" if t_path == "game" else "HKT",
+                                                "Joukkue": j['nimi'],
+                                                "Paikka": paikka,
+                                                "Hlö": maara,
+                                                "Tarve": "2 KOPPIA" if maara > 16 else "1 KOPPI"
+                                                })
                         curr += timedelta(days=1)
                     browser.close()
                 
