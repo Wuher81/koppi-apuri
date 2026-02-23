@@ -59,28 +59,24 @@ if aja_haku:
                     context = browser.new_context(viewport={'width': 1280, 'height': 800})
                     page = context.new_page()
 
-                    # 1. VARMA KIRJAUTUMINEN
+                    # 1. KIRJAUTUMINEN
                     st.write("Kirjaudutaan Jopoxiin...")
                     page.goto("https://login.jopox.fi/login?to=145")
-                    
-                    # Odotetaan mitä tahansa tekstikenttää
                     page.wait_for_selector("input", timeout=30000)
                     
-                    # Syötetään tunnukset suoraan kohdistamalla ensimmäiseen kenttään
+                    # Syöttö näppäimistöllä on hitain mutta varmin tapa
                     page.focus("input")
-                    page.keyboard.type(user)
+                    page.keyboard.type(user, delay=50)
                     page.keyboard.press("Tab")
-                    page.keyboard.type(pw)
+                    page.keyboard.type(pw, delay=50)
                     page.keyboard.press("Enter")
                     
-                    page.wait_for_timeout(5000) # Annetaan sivun rauhassa vaihtua
+                    page.wait_for_timeout(5000)
 
-                    # 2. PAKOTETTU SELAINVERSIO
+                    # 2. SELAINVERSIOON PAKOTUS
                     try:
-                        # Etsitään linkkiä, joka sisältää tekstin "selainversio"
                         btn = page.locator("a:has-text('selainversio'), a:has-text('browser version')").first
                         if btn.is_visible():
-                            st.write("Siirrytään selainversioon...")
                             btn.click()
                             page.wait_for_timeout(3000)
                     except:
@@ -120,19 +116,25 @@ if aja_haku:
                                             t_path = "game" if "game" in uid.group(1).lower() else "training"
                                             
                                             page.goto(f"https://assat-app.jopox.fi/{t_path}/club/{j['club_id']}/{uid_nro}")
+                                            page.wait_for_timeout(4000) # Odotetaan sivun piirtymistä
                                             
-                                            try:
-                                                # Odotetaan .chip-elementtejä (pelaajakortit)
-                                                page.wait_for_selector(".chip", timeout=20000)
-                                                maara = page.locator(".chip").count()
-                                                
+                                            # LASKENTA-LOGIIKKA (Parannettu usealla valitsimella)
+                                            maara = 0
+                                            # Yritetään löytää .chip-elementit tai muut osallistujat
+                                            maara = page.locator("#yesBox .chip, .player-chip, .in-player").count()
+                                            
+                                            if maara == 0:
+                                                # Jos ei löytynyt, kokeillaan laskea nimeen viittaavat divit
+                                                maara = page.locator("#yesBox .name, #yesBox .player-name").count()
+
+                                            if maara > 0:
                                                 tulokset.append({
                                                     "Pvm": nayta_pvm, "Klo": klo, "Tyyppi": "PELI" if t_path == "game" else "HKT",
                                                     "Joukkue": j['nimi'], "Paikka": paikka, "Hlö": maara,
                                                     "Tarve": "2 KOPPIA" if maara > 16 else "1 KOPPI"
                                                 })
-                                            except:
-                                                st.warning(f"Ei ilmoittautuneita: {nayta_pvm} {klo}")
+                                            else:
+                                                st.info(f"Tapahtuma löytyi, ei osallistujia: {nayta_pvm} {klo}")
                             except:
                                 continue
                         curr += timedelta(days=1)
@@ -148,7 +150,7 @@ if aja_haku:
                     csv = df.to_csv(index=False).encode('utf-8-sig')
                     st.download_button("📥 LATAA CSV", csv, f"kopit_{datetime.now().strftime('%d%m%Y')}.csv", "text/csv")
                 else:
-                    st.warning("Tapahtumia ei löytynyt.")
+                    st.warning("Tapahtumia, joissa on osallistujia, ei löytynyt.")
 
             except Exception as e:
-                st.error(f"Kriittinen virhe: {e}")
+                st.error(f"Virhe: {e}")
