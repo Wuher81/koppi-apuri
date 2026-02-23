@@ -125,14 +125,15 @@ if aja_haku:
                                         t_path = "game" if "game" in uid.group(1).lower() else "training"
                                         
                                         page.goto(f"https://assat-app.jopox.fi/{t_path}/club/{j['club_id']}/{uid_nro}")
-                                        page.wait_for_selector("#yesBox", timeout=8000)
+                                        try:
+                                            page.wait_for_selector("#yesBox", timeout=8000)
                                         
                                         # PELI VS HARKKA LOGIIKKA
-                                        if t_path == "training":
-                                            maara = page.locator("#yesBox .chip.player").count()
+                                            if t_path == "training":
+                                                maara = page.locator("#yesBox .chip.player").count()
                                             if maara == 0: maara = page.locator("#yesBox .chip").count()
-                                        else:
-                                            maara = page.locator("#yesBox .chip").count()
+                                            else:
+                                                maara = page.locator("#yesBox .chip").count()
                                         
                                         tulokset.append({
                                             "Pvm": nayta_pvm,
