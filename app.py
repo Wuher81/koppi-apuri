@@ -40,7 +40,7 @@ st.title("🏒 ÄSSÄT KOPPI-APURI v1.0 (Web)")
 with st.form("haku_lomake"):
     col1, col2 = st.columns(2)
     with col1:
-        user = st.text_input("Jopox Tunnus")
+        user = st.text_input("Jopox Tunnus (Sähköposti)")
         alku_pvm = st.date_input("Alku päivä", datetime.now())
     with col2:
         pw = st.text_input("Salasana", type="password")
@@ -55,8 +55,10 @@ if aja_haku:
         st.error("Syötä Jopox-tunnukset!")
     else:
         tulokset = []
-        with st.status("Valmistellaan selainta...", expanded=True) as status:
+        with st.status("Haetaan tietoja...", expanded=True) as status:
             try:
+                # 1. Selaimen asennus
+                st.write("Varmistetaan selainkomponentit...")
                 os.system("playwright install firefox")
                 
                 with sync_playwright() as p:
@@ -64,31 +66,32 @@ if aja_haku:
                     context = browser.new_context(viewport={'width': 1280, 'height': 800})
                     page = context.new_page()
 
+                    # 2. Kirjautuminen
                     st.write("Kirjaudutaan Jopoxiin...")
                     page.goto("https://login.jopox.fi/login?to=145")
+                    page.wait_for_selector("input", timeout=20000)
                     
-                    # Etsitään salasana-kenttä riippumatta framesta
-                    target = page
-                    for f in page.frames:
-                        if f.locator("input[type='password']").count() > 0:
-                            target = f; break
-                    
-                    target.locator("input[type='password']").fill(pw)
-                    target.get_by_placeholder(re.compile("tunnus|email|käyttäjä", re.I)).fill(user)
+                    # Syötetään tunnukset näppäimistöllä (varmempi tapa)
+                    page.keyboard.press("Tab")
+                    page.keyboard.type(user)
+                    page.keyboard.press("Tab")
+                    page.keyboard.type(pw)
                     page.keyboard.press("Enter")
                     
-                    # Varmistetaan että ollaan sisällä
-                    page.wait_for_load_state("networkidle")
-                    
-                    # Pakotetaan selainversio
-                    try:
-                        btn = page.locator("text=/TO BROWSER VERSION|SIIRRY SELAINVERSIOON/i")
-                        if btn.count() > 0:
-                            btn.click()
-                            page.wait_for_load_state("networkidle")
-                    except:
-                        pass 
+                    # Odotetaan kirjautumisen läpimenoa
+                    page.wait_for_timeout(5000)
 
+                    # 3. Pakotettu selainversio (Tämä poistaa mobiilinäkymän ongelmat)
+                    try:
+                        selain_nappi = page.get_by_role("link", name=re.compile("selainversio|browser version", re.I))
+                        if selain_nappi.count() > 0:
+                            st.write("Siirrytään selainversioon...")
+                            selain_nappi.click()
+                            page.wait_for_timeout(3000)
+                    except:
+                        pass
+
+                    # 4. Päivien läpikäynti
                     curr = datetime.combine(alku_pvm, datetime.min.time())
                     loppu = datetime.combine(loppu_pvm, datetime.min.time())
 
@@ -116,42 +119,51 @@ if aja_haku:
                                         e_m = re.search(r"DTEND.*T(\d{2})(\d{2})", seg)
                                         klo = f"{a_m.group(1)}:{a_m.group(2)} - {e_m.group(1)}:{e_m.group(2)}" if a_m and e_m else "--:--"
 
-                                        # Tapahtumatyyppi ja linkki
+                                        # Tapahtuman UID
                                         uid = re.search(r"UID:(.*)", seg)
                                         if uid:
                                             uid_nro = "".join(filter(str.isdigit, uid.group(1)))
                                             t_path = "game" if "game" in uid.group(1).lower() else "training"
                                             
-                                            # Hakuprosessi
+                                            # Mennään tapahtuman sivulle
                                             page.goto(f"https://assat-app.jopox.fi/{t_path}/club/{j['club_id']}/{uid_nro}")
                                             
                                             try:
-                                                # Odotetaan ilmoittautuneiden listaa
-                                                page.wait_for_selector("#yesBox", timeout=15000)
-                                                # Lasketaan elementit jotka sisältävät nimen
-                                                maara = page.locator("#yesBox .chip, #yesBox .player").count()
+                                                # Odotetaan ilmoittautuneiden listaa kärsivällisesti (30s)
+                                                page.wait_for_selector(".chip", timeout=30000)
+                                                maara = page.locator(".chip").count()
                                                 
                                                 tulokset.append({
-                                                    "Pvm": nayta_pvm, "Klo": klo, "Tyyppi": "PELI" if t_path == "game" else "HKT",
-                                                    "Joukkue": j['nimi'], "Paikka": paikka, "Hlö": maara,
+                                                    "Pvm": nayta_pvm, 
+                                                    "Klo": klo, 
+                                                    "Tyyppi": "PELI" if t_path == "game" else "HKT",
+                                                    "Joukkue": j['nimi'], 
+                                                    "Paikka": paikka, 
+                                                    "Hlö": maara,
                                                     "Tarve": "2 KOPPIA" if maara > 16 else "1 KOPPI"
                                                 })
                                             except:
-                                                st.warning(f"Ei saatu tietoja: {nayta_pvm} {klo} (Timeout)")
+                                                st.warning(f"Ei ilmoittautuneita: {nayta_pvm} {klo}")
                             except:
                                 continue
 
+                        # Siirrytään seuraavaan päivään
                         curr += timedelta(days=1)
 
+                    # Suljetaan selain haku-loopin jälkeen
                     browser.close()
                 
                 status.update(label="Haku valmis!", state="complete", expanded=False)
 
+                # 5. Tulosten näyttäminen
                 if tulokset:
                     df = pd.DataFrame(tulokset)
-                    st.table(df) # Table on varmempi näyttämään kaikki rivit kerralla
+                    st.table(df) # Table toimii varmemmin mobiililla
+                    st.divider()
+                    csv = df.to_csv(index=False).encode('utf-8-sig')
+                    st.download_button("📥 LATAA CSV", csv, f"kopit_{datetime.now().strftime('%d%m%Y')}.csv", "text/csv")
                 else:
-                    st.warning("Ei löytynyt tapahtumia valitulla aikavälillä.")
+                    st.warning("Tapahtumia ei löytynyt.")
 
             except Exception as e:
                 st.error(f"Kriittinen virhe: {e}")
